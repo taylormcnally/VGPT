@@ -1,0 +1,7 @@
+tensorflow
+tensorflow-datasets
+numpy
+rich
+Pillow
+click
+tensorboard
