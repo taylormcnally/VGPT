@@ -16,7 +16,7 @@
 
 ## Summary
 
-Streamline the creation of high performance video GANs for movies and shows or anything a 4D-GAN would be useful for!
+Streamline the creation of high performance GANs for 3D Temporal data, voxels, videos or anything a 4D-GAN would be useful for!
 
 ## **Currently in development**
 
