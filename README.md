@@ -16,9 +16,52 @@
 
 ## Summary
 
-Streamline the creation of high performance GANs for 3D Temporal data, voxels, videos or anything a 4D-GAN would be useful for!
+Streamline the creation of high performance GANs for voxels, videos or anything a 4D-GAN would be useful for!
 
 ## **Currently in development**
 
-## **Initial code commit will come soon!**
 
+## Requirements
+
+Hardware:
+
+These recommendations are for the default settings but give you a rough idea of what is expected.
+
+Inferencing: 16GB VRAM
+
+Training:  >40GB VRAM
+
+
+## Data
+
+There are two different types of GANs depending on the input dataset
+
+### VidGAN
+
+*RGB Video Data*
+
+You have a couple of options when it comes to data. The expected data file format is name ordered '.png', however there is logic for parsing images from '.mp4' formats.
+
+1. Find a mp4 or png files of video data
+2. Process the mp4 files with worker threads (If not in png format)
+3. Run training on the processed dataset
+
+### VoxGAN
+
+*Voxel data*
+
+*To be completed*
+
+## References
+
+StyleGAN3 architecture
+
+```text
+@inproceedings{Karras2021,
+  author = {Tero Karras and Miika Aittala and Samuli Laine and Erik H\"ark\"onen and Janne Hellsten and Jaakko Lehtinen and Timo Aila},
+  title = {Alias-Free Generative Adversarial Networks},
+  booktitle = {Proc. NeurIPS},
+  year = {2021}
+}
+
+```

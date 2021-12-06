@@ -10,7 +10,7 @@ import tensorflow as tf
 import sys
 import subprocess
 import signal
-from animax import cli
+from voxelgan import cli
 import glob
 from rich.progress import Progress, TaskID
 from concurrent.futures import ThreadPoolExecutor
@@ -57,7 +57,19 @@ def _resize_image_thread(task_id: TaskID,  image_set, resolution: int):
     progress.console.log(f'Thread complete')
 
 
-class Dataset(object):
+class VoxelDataset(object):
+    #TODO: Add support for voxel datasets
+    def __init__(self) -> None:
+        super().__init__()
+
+class PointDataset(object):
+    #TODO: Add support for point cloud datasets
+    def __init__(self) -> None:
+        super().__init__()
+
+
+
+class VideoDataset(object):
     def __init__(self, data_dir: str, resolution: int, batch_size: int, sequence: int, fps: float, 
         dataproc: bool, augment: bool, workers: int):
 
