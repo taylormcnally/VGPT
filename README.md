@@ -48,7 +48,7 @@ You have a couple of options when it comes to data. The expected data file forma
 
 ### VoxGAN
 
-*Voxel data*
+*Voxel or pointcloud data*
 
 *To be completed*
 

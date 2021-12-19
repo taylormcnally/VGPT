@@ -1,5 +1,5 @@
 import tensorflow as tf
-import cli 
+from voxelgan import cli 
 
 
 def get_distribute_strategy():

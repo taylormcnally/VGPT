@@ -1,4 +1,5 @@
 import os.path
+import PIL
 from rich.progress import (
     BarColumn,
     Progress,
@@ -117,10 +118,14 @@ class VideoDataset(object):
         #Loads data from disk into tensorflow dataset
 
         self.dataset = tf.data.Dataset.from_generator(self._generator, output_signature=(
-                    tf.TensorSpec(shape=(self.sequence,self.resolution,self.resolution,3), dtype=tf.int16)))
-        self.dataset.take(1)
+                    tf.TensorSpec(shape=(self.sequence,self.resolution,self.resolution,3), dtype=tf.uint8)))
+        print(self.dataset.take(2))
+        # self._test_generator()
+        for elem in self.dataset:
+            print(elem)
+
         self.dataset = self.dataset.map(lambda x, y: (self.resize_and_rescale(x), y), 
-              num_parallel_calls=AUTOTUNE)
+            num_parallel_calls=AUTOTUNE)
 
         if self.augment: 
             self.dataset = self.dataset.map(lambda x, y: (self.data_augmentation(x, training=True), y), 
@@ -134,23 +139,24 @@ class VideoDataset(object):
         Yields:
         SEQUENCE x RES x RES x 3 uint8 numpy arrays
         """
-        video = np.zeros(shape=(self.sequence, self.resolution, self.resolution, 3), dtype=np.uint8)
-        with glob.glob(self.data_dir + '/*.png') as f: #get all images in order by name
-            for image_file, i in enumerate(f):
-                image = tf.io.decode_png(image_file)
-                if i%self.sequence == 0 and i != 0: #if we have a full sequence
-                    yield {
-                        'video': video,
-                    }
-                    video = np.zeros(shape=(self.sequence, self.resolution, self.resolution, 3), dtype=np.uint8) #reset video
-                video[i%self.sequence] = image #add image to video
+        video = tf.constant(np.zeros(shape=(self.sequence, self.resolution, self.resolution, 3)))
+        files = sorted(glob.glob(self.data_dir + '*.png')) #get all images in order by name
+        for i, image_file in enumerate(files):
+            image = np.asarray(Image.open(image_file), dtype=np.uint8)
+            if i%self.sequence == 0 and i != 0: #if we have a full sequence
+                yield {
+                    'video': video,
+                }
+                video = np.zeros(shape=(self.sequence, self.resolution, self.resolution, 3), dtype=np.uint8) #reset video
+            video[i%self.sequence] = image #add image to video
  
     def _get_images_from_videos(self, fps: float):
         #Fetch frames from videos
         task = 'getting images from videos.'
         cli.print_working(task)
-        for video in glob.glob(self.data_dir + '/*.mp4'):
-            subprocess.call(['ffmpeg', '-i', video, '-vf', f'fps={fps}', '-q:v', '1', '-q:a', '0', '-y', video.replace('.mp4', f'%03d.png')])
+        for i, video in enumerate(glob.glob(self.data_dir + '/*.mp4')):
+            prefix = chr(ord('a')+i)
+            subprocess.call(['ffmpeg', '-i', video, '-vf', f'fps={fps}', '-q:v', '1', '-q:a', '0', '-y', video.replace('*.mp4', f'{prefix}%d.png')])
         cli.print_done(task)
 
     def _process_images(self):

@@ -6,8 +6,8 @@ import datetime
 import time
 
 from tensorflow.python.eager.context import device
-from voxelgan.vidGAN import GAN
-from voxelgan.dataset import Dataset
+from voxelgan.GAN import GAN
+from voxelgan.dataset import VideoDataset
 from voxelgan.utils import *
 
 title = '''
@@ -72,7 +72,7 @@ def train(**kwargs):
 
 
     #ensure that the dataset is in the correct format
-    dataset = Dataset(kwargs['data'], kwargs['res'], kwargs['batch'], kwargs['seq'], kwargs['fps'], kwargs['data_proc'], kwargs['aug'] ,kwargs['workers'])
+    dataset = VideoDataset(kwargs['data'], kwargs['res'], kwargs['batch'], kwargs['seq'], kwargs['fps'], kwargs['data_proc'], kwargs['aug'] ,kwargs['workers'])
     dataset.prepare_data()
     dataset.load_data()
     #if augmentation is enabled, add preprocessing layers to the GAN.
@@ -81,12 +81,10 @@ def train(**kwargs):
     if kwargs['fp32']:
         mixed_precision.set_global_policy('mixed_float16')
 
-
-    #trains
-    gan = GAN(**kwargs)
-
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+    gan = GAN(*kwargs)
 
     checkpoint = tf.train.Checkpoint(generator=gan.generator,
                                     discriminator=gan.discriminator,
