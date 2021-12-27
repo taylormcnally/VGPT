@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from voxelgan.loss import Loss
+from voxelgan.loss import generator_loss, discriminator_loss
 from voxelgan.optimizer import Optimizer
 
 
@@ -10,11 +10,11 @@ class Latent(tf.keras.Model):
 	'''
 	def __init__(self, d) -> None:
 		super(Latent, self).__init__(name='')
-		self.input = tf.keras.layers.InputLayer(input_shape=(d,)) #flat latent?
+		self.input_layer = tf.keras.layers.Input(shape=(d,))
 		self.normalize = tf.keras.layers.LayerNormalization()
 
 	def call(self, x):
-		x = self.input
+		x = self.input_layer
 		x = self.normalize(x)
 		return x
 
@@ -22,14 +22,15 @@ class Mapping(tf.keras.Model):
 	'''
 	The Mapping block 
 	'''
-	def __init__(self, z_dim, w_dim, num_mapping_layers, lr, ) -> None:
+	def __init__(self, w_dim, m_layers) -> None:
 		super(Mapping, self).__init__(name='')
-		self.dense = tf.keras.layers.Dense(z_dim)
+		self.m_layers = m_layers
+		self.dense = tf.keras.layers.Dense(w_dim)
 		self.leaky_relu = tf.keras.layers.LeakyReLU(alpha=0.2)
 		self.normalize = tf.keras.layers.LayerNormalization()
 
 	def call(self, x):
-		for i in range(self.num_mapping_layers):
+		for i in range(self.m_layers):
 			x = self.dense(x)
 			x = self.leaky_relu(x)
 		return x
@@ -38,42 +39,60 @@ class Generator_Block(tf.keras.Model):
 	'''
 	The Generator block 
 	'''
-	def __init__(self, resolution, w_dim, num_layers, lr, ) -> None:
+	def __init__(self, sequence, filters) -> None:
 		super(Generator_Block, self).__init__(name='')
-		self.conv = tf.keras.layers.Conv3DTranspose(filters=64, kernel_size=(3,3,3), strides=(1,1,1), padding='same')
+		self.conv = tf.keras.layers.Conv3DTranspose(filters=filters, kernel_size=(3,3,3), strides=(1,1,1), padding='same')
 		self.leaky_relu = tf.keras.layers.LeakyReLU(alpha=0.3)
 		self.upsample = tf.keras.layers.UpSampling3D(size=(2, 2, 2))
 		self.batch_norm = tf.keras.layers.BatchNormalization()
-		self.affine = tf.keras.layers.Add() #TODO: Fix affine layer
 
-	def call(self, x, m):
-		x = self.affine([x, m])
+	def call(self, x):
 		x = self.upsample(x)
 		x = self.batch_norm(x)
 		x = self.conv(x)
 		x = self.leaky_relu(x)
 		return x
 
+
+class RGB_Block(tf.keras.Model):
+	'''
+	The RGB block 
+	'''
+	def __init__(self, sequence, filters) -> None:
+		super(RGB_Block, self).__init__(name='')
+		self.conv = tf.keras.layers.Conv3D(filters=filters, kernel_size=(3,3,3), strides=(1,1,1), padding='same')
+		self.leaky_relu = tf.keras.layers.LeakyReLU(alpha=0.3)
+		self.batch_norm = tf.keras.layers.BatchNormalization()
+
+	def call(self, x):
+		x = self.conv(x)
+		x = self.leaky_relu(x)
+		x = self.batch_norm(x)
+		return x
+
 class Generator(tf.keras.Model):
-	def __init__(self, z_dim, resolution, w_dim, num_layers, lr, ) -> None:
+	def __init__(self, resolution, sequence, filters, z_dim, w_dim, mapping_layers) -> None:
 		super(Generator, self).__init__()
-		self.num_layers = num_layers
-		self.latent = Latent(z_dim, w_dim, num_layers, lr)
-		self.mapping = Mapping(z_dim, w_dim, num_layers, lr)
-		self.generator_block = Generator_Block(resolution, w_dim, num_layers, lr)
+		self.latent = Latent(z_dim)
+		self.mapping = Mapping(w_dim, mapping_layers)
+		self.generator_block = Generator_Block(sequence, filters)
+		self.rgbs = RGB_Block(sequence, filters)
+		self.fourier = tf.keras.layers.experimental.RandomFourierFeatures(output_dim=4096,scale=10.,kernel_initializer='gaussian') #fix this
 		self.noise = tf.keras.layers.GaussianNoise(0.1)
-		self.mapping_injector = tf.keras.layers.Add()
-		self.rgbs = tf.keras.layers.Conv3D(filters=3, kernel_size=(3,3,3), strides=(1,1,1), padding='same')
+		self.affine = tf.keras.layers.Add() #TODO: Fix affine layer
+
 
 	def call(self, x, training=False):
 		x = self.latent(x)
 		x = self.mapping(x)
-		for i in range(self.num_layers): #TODO: Fix this
-			x = self.generator_block([x])
-			x = self.noise(x)
-			x = self.mapping_injector([x, w])
-		x = self.rgbs(x)
-		return x
+		z = self.fourier(x)
+		for i in range(4): #TODO: Fix this
+			z = self.affine([z,x])
+			z = self.generator_block(z)
+			z = self.noise(z)
+		z = self.affine([z,x])
+		z = self.rgbs(z)
+		return z
 
 
 class Discriminator_Block(tf.keras.Model):
@@ -88,7 +107,6 @@ class Discriminator_Block(tf.keras.Model):
 		self.batch_norm = tf.keras.layers.BatchNormalization()
 
 	def call(self, x):
-		#conv layer
 		x = self.conv(x)
 		x = self.leaky_relu(x)
 		x = self.downsample(x)
@@ -96,22 +114,21 @@ class Discriminator_Block(tf.keras.Model):
 		return x
 
 class Discriminator(tf.keras.Model):
-	def __init__(self, resolution, sequence, depth, w_dim, num_layers, filters, lr) -> None:
+	def __init__(self, resolution, sequence, filters) -> None:
 		super(Discriminator, self).__init__(name='')
-		self.num_layers = num_layers
-		self.input = tf.keras.layers.InputLayer(input_shape=(sequence, resolution, resolution, 3))
+		self.input_layer = tf.keras.layers.Input(shape=(None, sequence, resolution, resolution, 3))
 		self.conv1 = tf.keras.layers.Conv3D(filters=filters, kernel_size=(3,3,3), strides=(1,1,1), padding='same')
-		self.discriminator_block = Discriminator_Block(depth, w_dim, num_layers, lr)
+		self.discriminator_block = Discriminator_Block(filters)
 		self.downsample = tf.keras.layers.MaxPooling3D(pool_size=(2, 2, 2))
 		self.pool = tf.keras.layers.GlobalAveragePooling3D()
-		self.output = tf.keras.layers.Dense(1, activation='sigmoid')
+		self.output_layer = tf.keras.layers.Dense(1, activation='sigmoid')
 
 	def call(self, x, training=False):
-		x = self.input(x)
-		for i in range(self.num_layers): #TODO: Fix this
+		x = self.input_layer(x)
+		for i in range(4): #TODO: Fix this
 			x = self.discriminator_block(x)
 		x = self.pool(x)
-		x = self.output(x)
+		x = self.output_layer(x)
 		return x
 
 
@@ -119,19 +136,26 @@ class GAN(tf.keras.Model):
 	def __init__(self,
 				generator,
 				discriminator,
-				latent,
-				generator_metrics,
-				discriminator_metrics,
+				generator_metrics=None,
+				discriminator_metrics=None,
+				generator_lr=0.0001,
+				discriminator_lr=0.0001,
 				**kwargs):
 		super().__init__(**kwargs)
-		self.generator = generator
-		self.discriminator = discriminator
+		self.generator = generator.build(input_shape=(None,512))
+		self.discriminator = discriminator.build(input_shape=(None,32,512,512,3))
 		self.generator_optimizer = Optimizer(0.0002, 0.0, 0.999)
 		self.discriminator_optimizer = Optimizer(0.002, 0.0, 0.999)
-		self.loss = Loss()
 		self.generator_metrics = generator_metrics
 		self.discriminator_metrics = discriminator_metrics
-		
+	
+		# self.discriminator.build()
+
+		#sanity checks
+		# assert self.generator.output_shape == self.discriminator.input_shape
+
+
+
 		#print the summary of the model
 		self.generator.summary()
 		tf.keras.utils.plot_model(self.generator, to_file='generator.png', show_shapes=True)
@@ -156,8 +180,8 @@ class GAN(tf.keras.Model):
 			real_output = self.discriminator(images, training=True)
 			fake_output = self.discriminator(generated_images, training=True)
 
-			gen_loss = self.generator_loss(fake_output)
-			disc_loss = self.discriminator_loss(real_output, fake_output)
+			gen_loss = generator_loss(fake_output)
+			disc_loss = discriminator_loss(real_output, fake_output)
 
 		gradients_of_generator = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
 		gradients_of_discriminator = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)

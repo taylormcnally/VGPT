@@ -1,4 +1,5 @@
 import os
+from warnings import filters
 import click
 from tensorflow.keras import mixed_precision
 import tensorflow as tf
@@ -6,12 +7,12 @@ import datetime
 import time
 
 from tensorflow.python.eager.context import device
-from voxelgan.GAN import GAN
+from voxelgan.GAN import GAN, Discriminator, Generator, Latent
 from voxelgan.dataset import VideoDataset
 from voxelgan.utils import *
 
 title = '''
-
+functional
 
 '''
 
@@ -36,6 +37,10 @@ cmd_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "commands")
 @click.option('--batch',        help='Total batch size', metavar='INT',                         type=click.IntRange(min=1), default=16)
 @click.option('--epochs',       help='Total number of epochs', metavar='INT',                   type=click.IntRange(min=1), default=100)
 @click.option('--aug',          help='Augmentation mode',                                       type=bool, default=False)
+@click.option('--filters',      help='filters',                                                 type=int, default=64)
+@click.option('--map-depth',    help='Mapping network depth  [default: varies]', metavar='INT', type=click.IntRange(min=1), default=8)
+@click.option('--z-dim',        help='Z dimensions', metavar='INT',                             type=click.IntRange(min=8), default=512)
+@click.option('--w-dim',        help='W dimensions', metavar='INT',                             type=click.IntRange(min=8), default=512)
 
 
 # Optional features.
@@ -48,7 +53,6 @@ cmd_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "commands")
 @click.option('--cbase',        help='Capacity multiplier', metavar='INT',                      type=click.IntRange(min=1), default=32768, show_default=True)
 @click.option('--glr',          help='G learning rate  [default: varies]', metavar='FLOAT',     type=click.FloatRange(min=0))
 @click.option('--dlr',          help='D learning rate', metavar='FLOAT',                        type=click.FloatRange(min=0), default=0.002, show_default=True)
-@click.option('--map-depth',    help='Mapping network depth  [default: varies]', metavar='INT', type=click.IntRange(min=1))
 @click.option('--mbstd-group',  help='Minibatch std group size', metavar='INT',                 type=click.IntRange(min=1), default=4, show_default=True)
 
 # Misc settings.
@@ -72,9 +76,9 @@ def train(**kwargs):
 
 
     #ensure that the dataset is in the correct format
-    dataset = VideoDataset(kwargs['data'], kwargs['res'], kwargs['batch'], kwargs['seq'], kwargs['fps'], kwargs['data_proc'], kwargs['aug'] ,kwargs['workers'])
-    dataset.prepare_data()
-    dataset.load_data()
+    # dataset = VideoDataset(kwargs['data'], kwargs['res'], kwargs['batch'], kwargs['seq'], kwargs['fps'], kwargs['data_proc'], kwargs['aug'] ,kwargs['workers'])
+    # dataset.prepare_data()
+    # dataset.load_data()
     #if augmentation is enabled, add preprocessing layers to the GAN.
 
     #mixed precision training
@@ -84,7 +88,11 @@ def train(**kwargs):
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
-    gan = GAN(*kwargs)
+    #create the GAN
+    generator = Generator(resolution=kwargs['res'], sequence=kwargs['seq'], filters=kwargs['filters'], z_dim=kwargs['z_dim'], w_dim=kwargs['w_dim'], mapping_layers=kwargs['map_depth'])
+    discriminator = Discriminator(resolution=kwargs['res'], sequence=kwargs['seq'], filters=kwargs['filters'])
+
+    gan = GAN(generator, discriminator, generator_lr=kwargs['glr'], discriminator_lr=kwargs['dlr'])
 
     checkpoint = tf.train.Checkpoint(generator=gan.generator,
                                     discriminator=gan.discriminator,

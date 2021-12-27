@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from PIL import Image
 import numpy as np
+import math
 
 AUTOTUNE = tf.data.AUTOTUNE
 
@@ -112,17 +113,19 @@ class VideoDataset(object):
                         self._process_images()
             cli.print_success('Data directory is in correct format.')
             self._process_images()
-            cli.print_success('Dataset prepared.')
+            cli.print_success('Dataset prepared, Loading into memory...')
 
     def load_data(self):
         #Loads data from disk into tensorflow dataset
 
-        self.dataset = tf.data.Dataset.from_generator(self._generator, output_signature=(
-                    tf.TensorSpec(shape=(self.sequence,self.resolution,self.resolution,3), dtype=tf.uint8)))
+
+        # self.dataset = tf.data.Dataset.from_generator(self._generator, output_signature=(
+        #             tf.TensorSpec(shape=(self.sequence,self.resolution,self.resolution,3), dtype=tf.uint8)))
+        cli.print_working('Loading dataset into memory...')
+        self.dataset = tf.data.Dataset.from_tensors(self._generator(), dtype=np.uint8) #load dataset as tensorflow dataset
+        
         print(self.dataset.take(2))
         # self._test_generator()
-        for elem in self.dataset:
-            print(elem)
 
         self.dataset = self.dataset.map(lambda x, y: (self.resize_and_rescale(x), y), 
             num_parallel_calls=AUTOTUNE)
@@ -133,22 +136,25 @@ class VideoDataset(object):
 
         self.dataset.batch(self.batch_size)
         self.dataset.cache().prefetch(buffer_size=AUTOTUNE) #use buffered prefetching on the dataset
+        cli.print_success('Dataset in memory.')
 
     def _generator(self):
-        """Generate video sequences.
+        """Generate video sequences as a numpy array
         Yields:
-        SEQUENCE x RES x RES x 3 uint8 numpy arrays
+        LENGTH x SEQUENCE x RES x RES x 3 uint8 numpy arrays
         """
-        video = tf.constant(np.zeros(shape=(self.sequence, self.resolution, self.resolution, 3)))
-        files = sorted(glob.glob(self.data_dir + '*.png')) #get all images in order by name
-        for i, image_file in enumerate(files):
-            image = np.asarray(Image.open(image_file), dtype=np.uint8)
-            if i%self.sequence == 0 and i != 0: #if we have a full sequence
-                yield {
-                    'video': video,
-                }
-                video = np.zeros(shape=(self.sequence, self.resolution, self.resolution, 3), dtype=np.uint8) #reset video
-            video[i%self.sequence] = image #add image to video
+        #precalc length of dataset
+        files = glob.glob(self.data_dir + '*.png')
+        length = int(math.ceil(len(files)/self.sequence))
+        video = np.zeros(shape=(length, self.sequence, self.resolution, self.resolution, 3))
+        files = sorted(files) #get all images in order by name
+        for i, image_file in enumerate(files): #TODO: multithread this
+            try:
+                image = np.asarray(Image.open(image_file), dtype=np.uint8)
+                video[i//self.sequence,i%self.sequence] = image #add image to video
+            except:
+                print(f'Error loading image {image_file}')
+        return video
  
     def _get_images_from_videos(self, fps: float):
         #Fetch frames from videos

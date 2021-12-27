@@ -12,10 +12,4 @@ def generator_loss(generated):
     return loss_obj(tf.ones_like(generated), generated)
 
 
-class Loss:
-    def __init__(self):
-        self.discriminator_loss = discriminator_loss()
-        self.generator_loss = generator_loss()
-
-
 
