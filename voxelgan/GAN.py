@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from voxelgan.loss import generator_loss, discriminator_loss
 from voxelgan.optimizer import Optimizer
-
+import numpy as np
 
 class Latent(tf.keras.Model):
 	'''
@@ -35,8 +35,21 @@ class Mapping(tf.keras.Model):
 			x = self.leaky_relu(x)
 		return x
 
+class NyaAdd(tf.keras.layers.Layer):
+	#connect the mapping network with the convolutional layers
+	def __init__(self) -> None:
+		super(NyaAdd, self).__init__(name='NyaAdd')
+		self.concat = tf.keras.layers.Concatenate(axis=1)
+
+	def call(self, x):
+		#TODO: this was an idea (just adding the two together entirely is too many params)
+		a = tf.keras.layers.Reshape(x[0].shape[-1])(x[1])
+		# x = self.affine([x[0], a])
+		c = tf.keras.layers.Concatenate([x[0], a])
+		return x
+
 class Generator_Block(tf.keras.Model):
-	'''
+	'''4
 	The Generator block 
 	'''
 	def __init__(self, sequence, filters) -> None:
@@ -52,7 +65,6 @@ class Generator_Block(tf.keras.Model):
 		x = self.conv(x)
 		x = self.leaky_relu(x)
 		return x
-
 
 class RGB_Block(tf.keras.Model):
 	'''
@@ -73,24 +85,24 @@ class RGB_Block(tf.keras.Model):
 class Generator(tf.keras.Model):
 	def __init__(self, resolution, sequence, filters, z_dim, w_dim, mapping_layers) -> None:
 		super(Generator, self).__init__()
-		self.latent = Latent(z_dim)
+		self.latent = Latent(w_dim)
 		self.mapping = Mapping(w_dim, mapping_layers)
 		self.generator_block = Generator_Block(sequence, filters)
 		self.rgbs = RGB_Block(sequence, filters)
-		self.fourier = tf.keras.layers.experimental.RandomFourierFeatures(output_dim=4096,scale=10.,kernel_initializer='gaussian') #fix this
-		self.noise = tf.keras.layers.GaussianNoise(0.1)
-		self.affine = tf.keras.layers.Add() #TODO: Fix affine layer
+		self.nya = NyaAdd()
+		init = np.zeros((1,4,4,4,512))
 
+		self.const = tf.Variable(init, shape=(1,4,4,4,512), trainable=True)
+		self.noise = tf.keras.layers.GaussianNoise(0.1)
 
 	def call(self, x, training=False):
 		x = self.latent(x)
 		x = self.mapping(x)
-		z = self.fourier(x)
+		z = self.const
 		for i in range(4): #TODO: Fix this
-			z = self.affine([z,x])
 			z = self.generator_block(z)
 			z = self.noise(z)
-		z = self.affine([z,x])
+			z = self.nya([z,x])
 		z = self.rgbs(z)
 		return z
 
