@@ -39,13 +39,11 @@ class NyaAdd(tf.keras.layers.Layer):
 	#connect the mapping network with the convolutional layers
 	def __init__(self) -> None:
 		super(NyaAdd, self).__init__(name='NyaAdd')
-		self.concat = tf.keras.layers.Concatenate(axis=1)
 
 	def call(self, x):
 		#TODO: this was an idea (just adding the two together entirely is too many params)
 		a = tf.keras.layers.Reshape(x[0].shape[-1])(x[1])
-		# x = self.affine([x[0], a])
-		c = tf.keras.layers.Concatenate([x[0], a])
+		x = tf.keras.layers.concatenate([x[0], a])
 		return x
 
 class Generator_Block(tf.keras.Model):
@@ -156,12 +154,14 @@ class GAN(tf.keras.Model):
 		super().__init__(**kwargs)
 		self.generator = generator.build(input_shape=(None,512))
 		self.discriminator = discriminator.build(input_shape=(None,32,512,512,3))
-		self.generator_optimizer = Optimizer(0.0002, 0.0, 0.999)
-		self.discriminator_optimizer = Optimizer(0.002, 0.0, 0.999)
+		self.generator_optimizer = Optimizer(generator_lr, 0.0, 0.999)
+		self.discriminator_optimizer = Optimizer(discriminator_lr, 0.0, 0.999)
 		self.generator_metrics = generator_metrics
 		self.discriminator_metrics = discriminator_metrics
 	
-		# self.discriminator.build()
+		self.discriminator.build()
+
+		self.generator.build()
 
 		#sanity checks
 		# assert self.generator.output_shape == self.discriminator.input_shape
