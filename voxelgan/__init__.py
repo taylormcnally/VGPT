@@ -1,4 +1,4 @@
 import voxelgan.cli
 import voxelgan.download
 import voxelgan.dataset
-import voxelgan.GAN
+import voxelgan.cGAN

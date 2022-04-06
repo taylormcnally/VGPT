@@ -1,7 +1,10 @@
 tensorflow
 tensorflow-datasets
+tensorflow-probability
 numpy
 rich
 Pillow
 click
 tensorboard
+absl-py
+numpy
