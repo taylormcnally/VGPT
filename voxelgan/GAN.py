@@ -20,6 +20,20 @@ def block_voxels(inputs: tf.Tensor, patch_size: int) -> tf.Tensor:
 	return outputs
 
 
+def block_images(inputs: tf.Tensor, patch_size: int) -> tf.Tensor:
+	"""Converts the image to blocked patches."""
+	# inputs: (batch_size, height, width, channels)
+	_, height, width, channel_dim = inputs.shape
+	patch_length = patch_size**2
+
+	outputs = tf.nn.space_to_depth(inputs, patch_size)
+	outputs = tf.reshape(
+		outputs,
+		shape=(-1, height * width // patch_length, patch_length, channel_dim))
+	# outputs: (batch_size, grid_h * grid_w, patch_h * patch_w, channels)
+	return 
+
+
 def unblock_voxels(inputs: tf.Tensor, grid_size: int,
 				   patch_size: int) -> tf.Tensor:
 	"""Converts blocked patches to voxels."""
@@ -37,6 +51,12 @@ def unblock_voxels(inputs: tf.Tensor, grid_size: int,
 	outputs = tf.nn.depth_to_space(outputs, patch_size)
 	return outputs
 
+
+def _3dconvolution():
+		
+	
+	
+	pass
 
 
 def _build_attention_equation(rank, attn_axes):
