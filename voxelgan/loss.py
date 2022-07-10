@@ -1,15 +1,15 @@
-import tensorflow as tf
+import torch
 
-loss_obj = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+loss_obj = torch.nn.BinaryCrossEntropyLoss()
 
 def discriminator_loss(real, generated):
-    real_loss = loss_obj(tf.ones_like(real), real)
-    generated_loss = loss_obj(tf.zeros_like(generated), generated)
+    real_loss = loss_obj(torch.ones_like(real), real)
+    generated_loss = loss_obj(torch.zeros_like(generated), generated)
     total_loss = real_loss + generated_loss
     return total_loss
 
 def generator_loss(generated):
-    return loss_obj(tf.ones_like(generated), generated)
+    return loss_obj(torch.ones_like(generated), generated)
 
 
 
