@@ -2,15 +2,15 @@
    <img src="./resources/voxelgan.png" height="40%" width="40%"/>
    <br>
    <a>
-      <img src="https://img.shields.io/badge/python-3.9-blue.svg" alt="Gitter">
+      <img src="https://img.shields.io/badge/python-3.9-blue.svg" alt="Python">
    </a>
    <a>
-      <img src="https://camo.githubusercontent.com/7ce7d8e78ad8ddab3bea83bb9b98128528bae110/68747470733a2f2f616c65656e34322e6769746875622e696f2f6261646765732f7372632f74656e736f72666c6f772e737667" alt="Gitter">
+      <img src="https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white" alt="Pytorch">
    </a>
    <a href="https://opensource.org/licenses/MIT">
-      <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="Gitter">
+      <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT">
    </a>
-   <h3 align="center">Tensorflow 2 4D-GAN</h3>
+   <h3 align="center">Pytorch MViT GAN</h3>
 </p>
 
 
@@ -34,34 +34,29 @@ Training:  >40GB VRAM
 
 ## Data
 
-There are two different types of GANs depending on the input dataset
-
-### VidGAN
+### Processing data
 
 *RGB Video Data*
 
 You have a couple of options when it comes to data. The expected data file format is name ordered '.png', however there is logic for parsing images from '.mp4' formats.
 
 1. Find a mp4 or png files of video data
-2. Process the mp4 files with worker threads (If not in png format)
-3. Run training on the processed dataset
+2. Process the mp4 files with ffmpeg (*preferred fast method is using the nvidia compiled binaries to utilize GPU speedup)
 
-### VoxGAN
+3. use tfds to create the new dataset file
 
-*Voxel or pointcloud data*
+> tfds new my_dataset
 
-*To be completed*
 
-## References
 
-StyleGAN3 architecture
+### Configuring the model
 
-```text
-@inproceedings{Karras2021,
-  author = {Tero Karras and Miika Aittala and Samuli Laine and Erik H\"ark\"onen and Janne Hellsten and Jaakko Lehtinen and Timo Aila},
-  title = {Alias-Free Generative Adversarial Networks},
-  booktitle = {Proc. NeurIPS},
-  year = {2021}
-}
 
-```
+### Pretraining
+
+### Finetuning
+
+
+
+
+

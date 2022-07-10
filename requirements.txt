@@ -1,6 +1,3 @@
-tensorflow
-tensorflow-datasets
-tensorflow-probability
 numpy
 rich
 Pillow
@@ -8,3 +5,7 @@ click
 tensorboard
 absl-py
 numpy
+torch
+torchvision # for quick video preprocessing
+pytorch-lightning
+av # torchvision requirement
