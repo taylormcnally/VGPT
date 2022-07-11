@@ -9,3 +9,4 @@ torch
 torchvision # for quick video preprocessing
 pytorch-lightning
 av # torchvision requirement
+megatron-lm
