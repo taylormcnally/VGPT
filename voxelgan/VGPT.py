@@ -163,18 +163,6 @@ class Mlp(nn.Module):
 		return x
 
 
-class Encoder(nn.Module):
-	def __init__(self,
-					in_features,
-					hidden_features=None,
-					out_features=None,
-					act_layer=nn.GELU,
-					drop=0.):
-		super().__init__()
-
-
-
-
 class Decoder(nn.Module):
 	def __init__(self,
 					in_features,
@@ -183,7 +171,11 @@ class Decoder(nn.Module):
 					act_layer=nn.GELU,
 					drop=0.):
 		super().__init__()
+		out_features = out_features or in_features
 
+		
+	def forward(self, enc_input_ids, enc_pos_ids, enc_attn_mask, dec_input_ids, dec_pos_ids, dec_attn_mask):
+		pass
 		
 
 
