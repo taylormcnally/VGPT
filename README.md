@@ -13,13 +13,12 @@
    <h3 align="center">Pytorch MViT GAN</h3>
 </p>
 
+## **Currently in development**
+
 
 ## Summary
 
 Streamline the creation of high performance GANs for voxels, videos or anything a 4D-GAN would be useful for!
-
-## **Currently in development**
-
 
 ## Requirements
 
