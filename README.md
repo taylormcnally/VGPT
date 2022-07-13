@@ -1,5 +1,4 @@
 <p align="center">
-   <img src="./resources/voxelgan.png" height="40%" width="40%"/>
    <br>
    <a>
       <img src="https://img.shields.io/badge/python-3.9-blue.svg" alt="Python">
