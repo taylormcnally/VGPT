@@ -20,6 +20,9 @@ from PIL import Image
 import numpy as np
 import math
 
+import torch
+from megatron import print_rank_0, get_args, mpu
+
 AUTOTUNE = tf.data.AUTOTUNE
 
 done_event = Event()
@@ -57,17 +60,6 @@ def _resize_image_thread(task_id: TaskID,  image_set, resolution: int):
         if done_event.is_set():
             return
     progress.console.log(f'Thread complete')
-
-
-class VoxelDataset(object):
-    #TODO: Add support for voxel datasets
-    def __init__(self) -> None:
-        super().__init__()
-
-class PointDataset(object):
-    #TODO: Add support for point cloud datasets
-    def __init__(self) -> None:
-        super().__init__()
 
 
 
@@ -115,28 +107,30 @@ class VideoDataset(object):
             self._process_images()
             cli.print_success('Dataset prepared, Loading into memory...')
 
-    def load_data(self):
-        #Loads data from disk into tensorflow dataset
+    def build_data_loader(self, dataset, drop_last=True, shuffle=False):
+        """Data loader. Note that batch-size is the local (per GPU) batch-size."""
+        # Sampler.
+        args = get_args()
+        micro_batch_size = 16
+        num_workers = args.num_workers
+        world_size = mpu.get_data_parallel_world_size()
+        rank = mpu.get_data_parallel_rank()
+        sampler = torch.utils.data.distributed.DistributedSampler(
+            dataset, num_replicas=world_size, rank=rank,
+            drop_last=drop_last, shuffle=shuffle
+        )
 
-
-        # self.dataset = tf.data.Dataset.from_generator(self._generator, output_signature=(
-        #             tf.TensorSpec(shape=(self.sequence,self.resolution,self.resolution,3), dtype=tf.uint8)))
-        cli.print_working('Loading dataset into memory...')
-        self.dataset = tf.data.Dataset.from_tensors(self._generator(), dtype=np.uint8) #load dataset as tensorflow dataset
-        
-        print(self.dataset.take(2))
-        # self._test_generator()
-
-        self.dataset = self.dataset.map(lambda x, y: (self.resize_and_rescale(x), y), 
-            num_parallel_calls=AUTOTUNE)
-
-        if self.augment: 
-            self.dataset = self.dataset.map(lambda x, y: (self.data_augmentation(x, training=True), y), 
-                num_parallel_calls=AUTOTUNE)
-
-        self.dataset.batch(self.batch_size)
-        self.dataset.cache().prefetch(buffer_size=AUTOTUNE) #use buffered prefetching on the dataset
-        cli.print_success('Dataset in memory.')
+        # Data loader. Note that batch size is the per GPU batch size.
+        data_loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=micro_batch_size,
+            sampler=sampler,
+            shuffle=False,
+            num_workers=num_workers,
+            drop_last=not drop_last,
+            pin_memory=True,
+        )
+        return data_loader
 
     def _generator(self):
         """Generate video sequences as a numpy array
@@ -157,7 +151,7 @@ class VideoDataset(object):
         return video
  
     def _get_images_from_videos(self, fps: float):
-        #Fetch frames from videos
+        #Fetch frames from mp4 videos
         task = 'getting images from videos.'
         cli.print_working(task)
         for i, video in enumerate(glob.glob(self.data_dir + '/*.mp4')):

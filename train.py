@@ -7,7 +7,7 @@ import datetime
 import time
 
 from tensorflow.python.eager.context import device
-from voxelgan.GAN import GAN, Discriminator, Generator, Latent
+from voxelgan.cGAN import GAN, Discriminator, Generator, Latent
 from voxelgan.dataset import VideoDataset
 from voxelgan.utils import *
 
