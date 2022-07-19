@@ -1,4 +1,5 @@
 
+from msilib import sequence
 from typing import Any, Callable, List, Optional, Text, Tuple, Union
 import math
 from typing import Tuple
@@ -15,8 +16,9 @@ import pytorch_lightning as pl
 from megatron import get_args
 from megatron import mpu
 from megatron.model import MegatronModule 
-from megatron.model.transformer import ParallelTransformer
-
+from megatron.model.transformer import ParallelTransformer, ParallelTransformerLayer
+from megatron.model.transformer import DropPath
+from megatron.model import LayerNorm
 
 
 class Reduction(nn.Module):
@@ -42,22 +44,43 @@ class Reduction(nn.Module):
 
 	'''
 	def __init__(self, 
-			tokens = 768,
+			tensor_shape: Tuple[int, int, int, int, int],
+			embed_dim=768,
 			conv_kernel_size: int = 3,
 			conv_stride: int = 1,
 			conv_padding: int = 1): 
 		super().__init__()
 		self.layer_norm = nn.LayerNorm()
-		self.conv = nn.Conv3d(in_channels=3, out_channels=3, kernel_size=4, stride=1)
-		self.attention = nn.Conv3d(in_features=tokens, out_features=tokens)
+		self.conv = nn.Conv3d(tensor_shape[-1], embed_dim, in_channels=3, out_channels=3, kernel_size=4, stride=1) #
 		self.sigmoid  = nn.Sigmoid()
 		self.gelu = nn.GELU()
 		self.batch_norm = nn.BatchNorm3d(num_features=1)
 
+	def _init_weights(self, m):
+		"""
+		Initialize the weights of the attention maps.
+		"""
+		if isinstance(m, nn.Linear):
+			trunc_normal_(m.weight, std=.02)
+			if isinstance(m, nn.Linear) and m.bias is not None:
+				nn.init.constant_(m.bias, 0)
+		elif isinstance(m, nn.LayerNorm):
+			nn.init.constant_(m.bias, 0)
+			nn.init.constant_(m.weight, 1.0)
+		elif isinstance(m, nn.Conv3d):
+			fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+			fan_out //= m.groups
+			m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+			if m.bias is not None:
+				m.bias.data.zero_()
+
+
 	def forward(self, w):
+		#per this paper: use a deep temporal conv and a wide non-temporal conv
 		x = self.layer_norm(w) # (batch_size, sequence/S, height, width, channels)
 
-		#apply block_voxels to get tubelets of 3,16,16
+		_, _, height, width, sequence = x.shape
+		#apply block_voxels to get tubelets of 3,16,16?
 		for i in range(3):
 			x = self.conv(x)
 			x = self.gelu(x)
@@ -65,7 +88,94 @@ class Reduction(nn.Module):
 		x = self.conv(x)
 		x = self.sigmoid(x)
 		
+		return x, height, width, sequence
+
+
+class Attention(nn.Module):
+    def __init__(self,
+                 dim,
+                 num_heads=8,
+                 qkv_bias=False,
+                 qk_scale=None,
+                 attn_drop=0.,
+                 proj_drop=0.,
+                 sr_ratio=1):
+        super().__init__()
+        assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
+
+        self.dim = dim
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        self.q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.sr_ratio = sr_ratio
+        if sr_ratio > 1:
+            self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+            self.norm = LayerNorm(dim)
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv3d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, H, W):
+        B, N, C = x.shape
+        q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+
+        if self.sr_ratio > 1:
+            x_ = x.permute(0, 2, 1).reshape(B, C, H, W)
+            x_ = self.sr(x_).reshape(B, C, -1).permute(0, 2, 1)
+            x_ = self.norm(x_)
+            kv = self.kv(x_).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        else:
+            kv = self.kv(x).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        k, v = kv[0], kv[1]
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+
+        return x
+
+
+class DecoderBlock(nn.Module):
+	def __init__(self,
+					in_features,
+					hidden_features=None,
+					out_features=None,
+					act_layer=nn.GELU,
+					drop=0.):
+		super().__init__()
+		out_features = out_features or in_features
+
+		self.self_attention = nn.MultiheadAttention(in_features, num_heads=8)
+	
+
+	def forward(self, x, height, width, sequence):
 		return x
+
 
 class Synthesis(nn.Module):
 	'''
@@ -123,61 +233,6 @@ class DWConv(nn.Module):
         return x
 
 
-class Mlp(nn.Module):
-	def __init__(self,
-					in_features,
-					hidden_features=None,
-					out_features=None,
-					act_layer=nn.GELU,
-					drop=0.):
-		super().__init__()
-		out_features = out_features or in_features
-		hidden_features = hidden_features or in_features
-		self.fc1 = nn.Linear(in_features, hidden_features)
-		self.dwconv = DWConv(hidden_features)
-		self.act = act_layer()
-		self.fc2 = nn.Linear(hidden_features, out_features)
-		self.drop = nn.Dropout(drop)
-
-		self.apply(self._init_weights)
-
-	def _init_weights(self, m):
-		if isinstance(m, nn.Linear):
-			trunc_normal_(m.weight, std=.02)
-			if isinstance(m, nn.Linear) and m.bias is not None:
-				nn.init.constant_(m.bias, 0)
-		elif isinstance(m, nn.LayerNorm):
-			nn.init.constant_(m.bias, 0)
-			nn.init.constant_(m.weight, 1.0)
-		elif isinstance(m, nn.Conv3d):
-			#TODO: implement 3d conv config
-			pass
-
-	def forward(self, x, S, H, W):
-		x = self.fc1(x)
-		x = self.dwconv(x, H, W)
-		x = self.act(x)
-		x = self.drop(x)
-		x = self.fc2(x)
-		x = self.drop(x)
-		return x
-
-
-class Decoder(nn.Module):
-	def __init__(self,
-					in_features,
-					hidden_features=None,
-					out_features=None,
-					act_layer=nn.GELU,
-					drop=0.):
-		super().__init__()
-		out_features = out_features or in_features
-
-		
-	def forward(self, enc_input_ids, enc_pos_ids, enc_attn_mask, dec_input_ids, dec_pos_ids, dec_attn_mask):
-		pass
-		
-
 
 class PositionEmbedding(nn.Module):
 	"""Defines learnable positional embeddings."""
@@ -198,6 +253,7 @@ class PositionEmbedding(nn.Module):
 
 class VGPT(MegatronModule):
 	def __init__(self,
+				depths: List[int],
 				pre_process = True,
 				post_process = True
 				):
@@ -213,20 +269,15 @@ class VGPT(MegatronModule):
 		super(VGPT, self).__init__(share_word_embeddings=False)
 		args = get_args()
 
+		self.depths = depths
+
 		self.hidden_size = args.hidden_size
 		self.patch_dim = args.patch_dim
 		self.img_h = args.img_h
 		self.img_w = args.img_w
 
-        # Transformer
-        self.transformer = ParallelTransformer(
-            self.init_method,
-            self.scaled_init_method,
-            pre_process=self.pre_process,
-            post_process=self.post_process,
-            post_layer_norm=self.post_layer_norm,
-            drop_path_rate=self.drop_path_rate
-		)
+		#reduction
+		self.reduction_1 = Reduction(input_size
 
 	def train_step(self, images):
 		pass

@@ -31,7 +31,7 @@ def print_done(msg):
 
 def get_gpu_info():
     """
-    Get GPU Hardware info. GPUs are preferred, warn if not available.
+    Get GPU Hardware info.
     """
     #get pytorch gpu info
     if torch.cuda.is_available():
