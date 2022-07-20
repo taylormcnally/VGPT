@@ -23,11 +23,7 @@ Streamline the creation of transformer models for voxels, videos or any higher d
 
 Hardware:
 
-These recommendations are for the default settings but give you a rough idea of what is expected.
-
-Inferencing: 16GB VRAM
-
-Training:  >40GB VRAM
+V100/A100 or equivalent Accelerators
 
 
 ## Data
