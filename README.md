@@ -9,7 +9,7 @@
    <a href="https://opensource.org/licenses/MIT">
       <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT">
    </a>
-   <h3 align="center">Pytorch MViT GAN</h3>
+   <h3 align="center">Pytorch MViT</h3>
 </p>
 
 ## **Currently in development**
@@ -17,7 +17,7 @@
 
 ## Summary
 
-Streamline the creation of high performance GANs for voxels, videos or anything a 4D-GAN would be useful for!
+Streamline the creation of transformer models for voxels, videos or any higher dimensional data.
 
 ## Requirements
 
